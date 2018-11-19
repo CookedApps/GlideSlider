@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.widget.AppCompatImageView;
 import android.view.View;
@@ -13,6 +14,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.RequestBuilder;
 import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.Target;
@@ -32,7 +34,7 @@ public abstract class BaseSliderView {
 
     private Bundle mBundle;
 
-    private String mUrl;
+    private GlideUrl mUrl;
     private File mFile;
     private int mRes;
 
@@ -74,7 +76,7 @@ public abstract class BaseSliderView {
      * @param url
      * @return
      */
-    public BaseSliderView image(String url) {
+    public BaseSliderView image(GlideUrl url) {
         if (mFile != null || mRes != 0) {
             throw new IllegalStateException("Call multi image function," +
                     "you only have permission to call it once");
@@ -118,7 +120,7 @@ public abstract class BaseSliderView {
         return this;
     }
 
-    public String getUrl() {
+    public GlideUrl getUrl() {
         return mUrl;
     }
 
@@ -181,35 +183,60 @@ public abstract class BaseSliderView {
     protected void bindEventAndShow(final View v, AppCompatImageView targetImageView) {
         final BaseSliderView me = this;
 
-        try {
-            v.findViewById(R.id.glide_slider_background).setBackgroundColor(mBackgroundColor);
-        } catch (NullPointerException e) {
-            e.printStackTrace();
-        }
+        trySetGliderBackgroundColor(v);
+        v.setOnClickListener(view -> setOnSliderClickListener(me));
 
-        v.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (mOnSliderClickListener != null) {
-                    mOnSliderClickListener.onSliderClick(me);
+        if (targetImageView != null) {
+            startLoadListener(me);
+
+            final ProgressBar mProgressBar = initProgressBar(v);
+            Object imageToLoad = getImageLoadObject();
+            RequestBuilder<Drawable> requestBuilder = Glide.with(mContext).as(Drawable.class);
+
+            if (imageToLoad != null) {
+                if (mRequestOptions != null) {
+                    requestBuilder.load(imageToLoad)
+                            .apply(mRequestOptions)
+                            .listener(getRequestListener(mProgressBar)).into(targetImageView);
+                } else {
+                    requestBuilder.load(imageToLoad)
+                            .listener(getRequestListener(mProgressBar)).into(targetImageView);
                 }
             }
-        });
+        }
+    }
 
-        if (targetImageView == null)
-            return;
+    private void trySetGliderBackgroundColor(View v) {
+        try {
+            v.findViewById(R.id.glide_slider_background).setBackgroundColor(mBackgroundColor);
+        } catch (NullPointerException ignored) {}
+    }
 
+    private void setOnSliderClickListener(BaseSliderView me) {
+        if (mOnSliderClickListener != null) {
+            mOnSliderClickListener.onSliderClick(me);
+        }
+    }
+
+    private void startLoadListener(BaseSliderView me) {
         if (mLoadListener != null) {
             mLoadListener.onStart(me);
         }
+    }
 
+    @NonNull
+    private ProgressBar initProgressBar(View v) {
         final ProgressBar mProgressBar = v.findViewById(R.id.loading_bar);
         if (isProgressBarVisible) {
             mProgressBar.setVisibility(View.VISIBLE);
         } else {
             mProgressBar.setVisibility(View.GONE);
         }
+        return mProgressBar;
+    }
 
+    @Nullable
+    private Object getImageLoadObject() {
         Object imageToLoad = null;
         if (mUrl != null) {
             imageToLoad = mUrl;
@@ -218,57 +245,31 @@ public abstract class BaseSliderView {
         } else if (mRes != 0) {
             imageToLoad = mRes;
         }
+        return imageToLoad;
+    }
 
-        RequestBuilder<Drawable> requestBuilder = Glide.with(mContext).as(Drawable.class);
-
-        if (imageToLoad != null) {
-            if (mRequestOptions != null) {
-                requestBuilder.load(imageToLoad)
-                        .apply(mRequestOptions)
-                        .listener(new RequestListener<Drawable>() {
-                            @Override
-                            public boolean onLoadFailed(@Nullable GlideException e,
-                                                        Object model,
-                                                        Target<Drawable> target,
-                                                        boolean isFirstResource) {
-                                mProgressBar.setVisibility(View.GONE);
-                                return false;
-                            }
-
-                            @Override
-                            public boolean onResourceReady(Drawable resource,
-                                                           Object model,
-                                                           Target<Drawable> target,
-                                                           DataSource dataSource,
-                                                           boolean isFirstResource) {
-                                mProgressBar.setVisibility(View.GONE);
-                                return false;
-                            }
-                        }).into(targetImageView);
-            } else {
-                requestBuilder.load(imageToLoad)
-                        .listener(new RequestListener<Drawable>() {
-                            @Override
-                            public boolean onLoadFailed(@Nullable GlideException e,
-                                                        Object model,
-                                                        Target<Drawable> target,
-                                                        boolean isFirstResource) {
-                                mProgressBar.setVisibility(View.GONE);
-                                return false;
-                            }
-
-                            @Override
-                            public boolean onResourceReady(Drawable resource,
-                                                           Object model,
-                                                           Target<Drawable> target,
-                                                           DataSource dataSource,
-                                                           boolean isFirstResource) {
-                                mProgressBar.setVisibility(View.GONE);
-                                return false;
-                            }
-                        }).into(targetImageView);
+    @NonNull
+    private RequestListener<Drawable> getRequestListener(final ProgressBar mProgressBar) {
+        return new RequestListener<Drawable>() {
+            @Override
+            public boolean onLoadFailed(@Nullable GlideException e,
+                                        Object model,
+                                        Target<Drawable> target,
+                                        boolean isFirstResource) {
+                mProgressBar.setVisibility(View.GONE);
+                return false;
             }
-        }
+
+            @Override
+            public boolean onResourceReady(Drawable resource,
+                                           Object model,
+                                           Target<Drawable> target,
+                                           DataSource dataSource,
+                                           boolean isFirstResource) {
+                mProgressBar.setVisibility(View.GONE);
+                return false;
+            }
+        };
     }
 
     /**
